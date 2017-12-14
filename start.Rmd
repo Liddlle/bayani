@@ -1,0 +1,95 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(stringr)
+res <- read_csv("/students/aagolovchenko/text_analysis/res_new.csv")
+res = res %>% filter(str_detect(meta, "---Текст песни "))
+res = tidyr::separate(res, meta, c("artist", "title"), sep = "---Текст песни ")
+uniq =  res %>% count(artist) 
+uniq %>% top_n(10, n)
+max(uniq$n)
+  uniq %>% ggplot() +geom_histogram(aes(x = n))
+quantile(uniq$n, 0.5)
+res$artist %>% unique() %>% length()
+art = res$artist %>% unique() 
+res$title %>% unique() %>% length()
+
+x = res %>% count(artist) %>% arrange(-n) 
+
+x$artist =  str_replace(x$artist, '"', "") %>% str_replace("'", "")
+x = x$artist
+parent = str_extract(x, "(\\(|\\[|\\{)[^\\)\\]\\}]*(\\)|\\]|\\})") %>% na.omit() %>% str_replace("\\(", "")%>% str_replace("\\)", "") 
+x = str_replace_all(x, "(\\(|\\[|\\{)[^\\)\\]\\}]*(\\)|\\]|\\})", "")
+x = tolower(x)
+x2 = strsplit(x, "ft.") %>% unlist() 
+x2 =   strsplit(x2, ",") %>% unlist() 
+x2 = strsplit(x2, "&") %>% unlist()
+x2=  strsplit(x2, "feat.") %>% unlist() 
+x2=  strsplit(x2, " и ") %>% unlist()
+x2 = str_trim(x2) %>% unique()
+x2 = data_frame(artist = x2)
+
+x2 = x2 %>% filter(str_length(artist)>2)
+x2$artist = str_replace_all(x2$artist, "[[:punct:]]+", " ")
+x2 = unique(x2) %>% arrange((artist))
+write_csv(x2, "~/artists.csv")
+#, & ft. feat. и 
+cleaned_sample_lyricshare[]
+
+
+```
+
+
+```{r}
+tracks <- read_csv("tracks.csv")
+tracks_first_try <- read_csv("tracks_first_try.csv") 
+tracks=rbind(tracks, tracks_first_try) %>% unique()%>% select(artist = artist_name, master_year, title)
+
+res$artist = tolower(res$artist)
+library("fuzzyjoin")
+
+res = res %>% select(-text)
+#tracks_lyrics = inner_join(tracks, res %>% select(-text)) %>% unique()
+
+artist_match = stringdist_inner_join(tracks, res %>% select(artist), max_dist = 1) %>% unique()
+names(artist_match) =  c("artist_dis", "year", "title", "artist")
+artist_match$title = artist_match$title %>% tolower()
+tracks_lyrics = res %>% filter(artist %in% artist_match$artist |artist %in% artist_match$artist_dis) %>% inner_join(artist_match) %>% na.omit()
+
+tracks_lyrics$title = tolower(tracks_lyrics$title)
+res$title = tolower(res$title)
+
+x = tracks_lyrics %>% group_by(artist, title) %>% summarise(words_n = max(words_n))
+x = inner_join(x, tracks_lyrics)
+y = tracks_lyrics %>% group_by(artist, title) %>% summarise(year = min(year))
+
+x = inner_join(x, y)
+
+tracks_lyrics = x%>% select(-url) %>% unique()
+tracks_lyrics$text.lem = str_replace_all(tracks_lyrics$text.lem, '[[:space:]]+', ' ')
+tracks_lyrics = tracks_lyrics %>% unique()
+write_csv(tracks_lyrics, "~/bayani/tracks_lyrics.csv")
+```
+
+
+```{r}
+tracks_lyrics %>% filter(year < 1980) %>% nrow()
+tracks_lyrics %>% filter(year > 1960) %>% ggplot() + geom_histogram(aes(x = year))+ theme_bw()
+```
+
+```{r}
+
+rus_sentiments <- read_csv("~/russian-twitter/rus_sentiments.csv",  comment="#") 
+names(rus_sentiments) <- c('word', "type_of_speech", "lemma", "sentiment", "source", "ambiguity")
+
+```
