@@ -15,48 +15,53 @@ library(stringr)
 res <- read_csv("/students/aagolovchenko/text_analysis/res_new.csv")
 res = res %>% filter(str_detect(meta, "---Текст песни "))
 res = tidyr::separate(res, meta, c("artist", "title"), sep = "---Текст песни ")
-uniq =  res %>% count(artist) 
-uniq %>% top_n(10, n)
-max(uniq$n)
-  uniq %>% ggplot() +geom_histogram(aes(x = n))
-quantile(uniq$n, 0.5)
+#uniq =  res %>% count(artist) 
+#uniq %>% top_n(10, n)
+#max(uniq$n)
+#uniq %>% ggplot() +geom_histogram(aes(x = n)) + ggtitle("распределение по кол-ву песен")
+#quantile(uniq$n, 0.5)
+
+#сколько уникальных исполнителей в базе
 res$artist %>% unique() %>% length()
+```
+
+
+Создание таблицы для запросов в discogs https://github.com/discogs/discogs_client/blob/master/README.mkd 
+```{r}
+
 art = res$artist %>% unique() 
-res$title %>% unique() %>% length()
-
 x = res %>% count(artist) %>% arrange(-n) 
-
 x$artist =  str_replace(x$artist, '"', "") %>% str_replace("'", "")
 x = x$artist
 parent = str_extract(x, "(\\(|\\[|\\{)[^\\)\\]\\}]*(\\)|\\]|\\})") %>% na.omit() %>% str_replace("\\(", "")%>% str_replace("\\)", "") 
 x = str_replace_all(x, "(\\(|\\[|\\{)[^\\)\\]\\}]*(\\)|\\]|\\})", "")
 x = tolower(x)
-x2 = strsplit(x, "ft.") %>% unlist() 
-x2 =   strsplit(x2, ",") %>% unlist() 
-x2 = strsplit(x2, "&") %>% unlist()
-x2=  strsplit(x2, "feat.") %>% unlist() 
-x2=  strsplit(x2, " и ") %>% unlist()
-x2 = str_trim(x2) %>% unique()
-x2 = data_frame(artist = x2)
+
+x2 = data_frame(artist = strsplit(x, "ft.") %>% unlist() %>% 
+  strsplit(",") %>% unlist() %>% 
+  strsplit("&") %>% unlist() %>% 
+  strsplit("feat.") %>% unlist() %>% 
+  strsplit(" и ") %>% unlist() %>% 
+  str_trim() %>% unique())
 
 x2 = x2 %>% filter(str_length(artist)>2)
 x2$artist = str_replace_all(x2$artist, "[[:punct:]]+", " ")
 x2 = unique(x2) %>% arrange((artist))
-write_csv(x2, "~/artists.csv")
+#write_csv(x2, "~/artists.csv")
 #, & ft. feat. и 
-cleaned_sample_lyricshare[]
-
 
 ```
 
 
+Найденные к песням года мэтчим с текстами
 ```{r}
+library("fuzzyjoin")
+
 tracks <- read_csv("tracks.csv")
 tracks_first_try <- read_csv("tracks_first_try.csv") 
 tracks=rbind(tracks, tracks_first_try) %>% unique()%>% select(artist = artist_name, master_year, title)
 
 res$artist = tolower(res$artist)
-library("fuzzyjoin")
 
 res = res %>% select(-text)
 #tracks_lyrics = inner_join(tracks, res %>% select(-text)) %>% unique()
@@ -88,8 +93,50 @@ tracks_lyrics %>% filter(year > 1960) %>% ggplot() + geom_histogram(aes(x = year
 ```
 
 ```{r}
-
+library(tidytext)
+#словарь сентиментов
 rus_sentiments <- read_csv("~/russian-twitter/rus_sentiments.csv",  comment="#") 
 names(rus_sentiments) <- c('word', "type_of_speech", "lemma", "sentiment", "source", "ambiguity")
 
+#стоп-слова  кроме местоимений
+stop_words <- read_csv("/students/aabakhitova/bayani/stop_words.csv")
+tracks_lyrics = add_row(tracks_lyrics %>% ungroup())
+
+num_artist = tracks_lyrics %>% count(artist_dis)
+num_artist %>%  ggplot() + geom_histogram(aes(x = n))
+quantile(num_artist$n, 0.05)
+num_artist = num_artist %>% filter(n>5)
+tracks_lyrics_filtered = tracks_lyrics %>% filter(artist_dis %in% num_artist$artist_dis)
+
+tracks_lyrics_filtered = tracks_lyrics_filtered %>% select(-title) 
+for_sentiments = tracks_lyrics_filtered %>% select(artist_dis, text.lem)%>% unnest_tokens(word, text.lem) 
+for_sentiments = for_sentiments %>% anti_join(stop_words)
+
+for_sentiments %>% group_by(artist_dis) %>% summarise(total = n(), unique = length(unique(word))) %>% mutate(share_unique =  unique/total) %>% arrange(-share_unique)
+for_sentiments %>% group_by(artist_dis) %>% summarise(total = n(), unique = length(unique(word))) %>% mutate(share_unique =  unique/total) %>% arrange(share_unique)
+#write_csv(for_sentiments %>% group_by(artist_dis) %>% summarise(total = n(), unique = length(unique(word))) %>% mutate(share_unique =  unique/total), "~/bayani/share_unique.csv")
+
+for_sentiments = for_sentiments %>% left_join(rus_sentiments %>% select(word, sentiment, source))
+
+sent_count = for_sentiments %>% count(artist_dis, sentiment) %>% na.omit() %>% filter(sentiment != "positive/negative")
+sent_count = sent_count %>% reshape2::acast(artist_dis ~ sentiment, value.var = "n", fill = 0) 
+sent_count = sent_count %>% as.data.frame() %>% add_rownames() %>% rename(artist = rowname)
+
+sent_count = sent_count %>% mutate(total_sentiment = negative+positive+neutral, 
+                                   percent_negative = round(negative / total_sentiment *100, 2),
+                                   percent_positive = round(positive / total_sentiment *100, 2),
+                                   percent_neutral = round(neutral / total_sentiment *100, 2))
+
+write_csv(sent_count, "~/bayani/sent_count_by_artists.csv")
+
+sent_count %>% select(artist, negative, positive, total_sentiment, percent_negative) %>% arrange(-percent_negative)
+sent_count %>% select(artist, negative, positive, total_sentiment, percent_positive) %>% arrange(-percent_positive)
+
 ```
+- словари эмоций — посчитать по годам и по исполнителям самые депрессивные и наоборот
+- кластеризация исполнителей по времени (потом сравнить несколько максимально разных типа Шнур - Земфира — LL посчитать) 
+
+```{r}
+
+```
+
