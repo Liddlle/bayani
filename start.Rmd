@@ -53,10 +53,9 @@ x2 = unique(x2) %>% arrange((artist))
 ```
 
 
-Найденные к песням года мэтчим с текстами
-```{r}
-library("fuzzyjoin")
 
+```{r}
+library(fuzzyjoin)
 tracks <- read_csv("tracks.csv")
 tracks_first_try <- read_csv("tracks_first_try.csv") 
 tracks=rbind(tracks, tracks_first_try) %>% unique()%>% select(artist = artist_name, master_year, title)
@@ -66,7 +65,7 @@ res$artist = tolower(res$artist)
 res = res %>% select(-text)
 #tracks_lyrics = inner_join(tracks, res %>% select(-text)) %>% unique()
 
-artist_match = stringdist_inner_join(tracks, res %>% select(artist), max_dist = 1) %>% unique()
+artist_match = stringdist_inner_join(tracks, res %>% select(artist_name = artist), max_dist = 1) %>% unique()
 names(artist_match) =  c("artist_dis", "year", "title", "artist")
 artist_match$title = artist_match$title %>% tolower()
 tracks_lyrics = res %>% filter(artist %in% artist_match$artist |artist %in% artist_match$artist_dis) %>% inner_join(artist_match) %>% na.omit()
